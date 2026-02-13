@@ -49,9 +49,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
-/**
- * Test class for UserApplicationCreationListener.
- */
 public class UserApplicationCreationListenerTest extends IdentityBaseTest {
 
     private static final String AGENT_USERNAME = "agent123";
@@ -95,7 +92,6 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
         when(oAuthComponentServiceHolder.getApplicationManagementService())
                 .thenReturn(applicationManagementService);
 
-        // Create the listener AFTER setting up the static mocks and property
         listener = new UserApplicationCreationListener();
     }
 
@@ -149,6 +145,23 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
     }
 
     @Test
+    public void testDoPostAddUserWithID_NonUserServingAgentNoAppCreation()
+            throws UserStoreException, IdentityApplicationManagementException {
+
+        setupCommonMocks();
+        when(user.getUserStoreDomain()).thenReturn(AGENT_USERSTORE_DOMAIN);
+        when(IdentityUtil.getAgentIdentityUserstoreName()).thenReturn(AGENT_USERSTORE_DOMAIN);
+        when(IdentityUtil.getThreadLocalIsUserServingAgent()).thenReturn(false);
+
+        boolean result = listener.doPostAddUserWithID(user, "password", new String[]{"role1"},
+                new HashMap<>(), null, userStoreManager);
+
+        assertTrue(result, "Listener should return true for non-user-serving agents");
+        verify(applicationManagementService, never()).createApplication(
+                any(ApplicationDTO.class), anyString(), anyString());
+    }
+
+    @Test
     public void testDoPostAddUserWithID_AgentUserSuccessfulAppCreation()
             throws UserStoreException, IdentityApplicationManagementException {
 
@@ -176,6 +189,10 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
                 AGENT_USERNAME,
                 "Application resource ID should match the agent username");
 
+        // Verify that API-based authentication is enabled on the agent application
+        assertTrue(capturedAppDTO.getServiceProvider().isAPIBasedAuthenticationEnabled(),
+                "API-based authentication should be enabled for agent applications");
+
         // Verify that when createApplication is called, it returns the agent username as application ID
         String returnedApplicationId =
                 applicationManagementService.createApplication(
@@ -196,5 +213,6 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
 
         when(user.getUserStoreDomain()).thenReturn(AGENT_USERSTORE_DOMAIN);
         when(IdentityUtil.getAgentIdentityUserstoreName()).thenReturn(AGENT_USERSTORE_DOMAIN);
+        when(IdentityUtil.getThreadLocalIsUserServingAgent()).thenReturn(true);
     }
 }

@@ -48,8 +48,12 @@ import org.wso2.carbon.user.core.util.UserCoreUtil;
 import java.util.Map;
 
 /**
- * User operation event listener that automatically creates a standard-based OAuth2/OIDC application
+ * User operation event listener that automatically creates an agent application
  * when a new agent is created in the system.
+ *
+ * <p>The agent application uses the {@code agent-application} template, which is
+ * an OAuth2-only (client credentials grant, JWT token) application with no SAML
+ * or WS-Federation support.</p>
  *
  * <p>This listener triggers only for agent creation (users in the AGENT userstore domain),
  * not for regular user creation.</p>
@@ -95,7 +99,7 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
 
         try {
 
-            log.info("Creating standard based application for new agent: ");
+            log.info("Creating agent application for new agent: ");
 
             String username = user.getUsername();
             String userStoreDomain = user.getUserStoreDomain();
@@ -116,30 +120,47 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
                 return true;
             }
 
-            // Create the OAuth2/OIDC application for the agent.
-            createStandardBasedApplication(username, tenantDomain);
-            
+            // Get the "IsUserServingAgent" flag from ThreadLocal
+            Boolean isUserServingAgent = IdentityUtil.getThreadLocalIsUserServingAgent();
+            if (isUserServingAgent == null) {
+                isUserServingAgent = false; // Default to false if not set
+            }
+
+            if (log.isDebugEnabled()) {
+                log.debug("IsUserServingAgent flag value:" + isUserServingAgent);
+            }
+
+            // Only create the OAuth2/OIDC application if this is a user-serving agent
+            if (Boolean.TRUE.equals(isUserServingAgent)) {
+                createAgentApplication(username, tenantDomain);
+            } else {
+                if (log.isDebugEnabled()) {
+                    log.debug("Skipping application creation for non-user-serving agent");
+                }
+            }
+
             return true;
 
         } catch (IdentityApplicationManagementException e) {
-            log.error("Error occurred while creating standard-based application for agent: ", e);
+            log.error("Error occurred while creating agent application for agent: ", e);
             // Return true to not block agent creation, but log the error.
             return true;
         }
 
     }
     
-    private void createStandardBasedApplication(String username, String tenantDomain)
+    private void createAgentApplication(String username, String tenantDomain)
             throws IdentityApplicationManagementException {
-        
+
         String applicationName = UserCoreUtil.removeDomainFromName(username);
 
         // Create a new ServiceProvider (Application).
         ServiceProvider serviceProvider = new ServiceProvider();
         serviceProvider.setApplicationName(OAuth2Constants.DEFAULT_AGENT_IDENTITY_USERSTORE_NAME
                 + "-" + applicationName);
-        serviceProvider.setDescription("Standard-based OAuth2/OIDC application auto-created for agent");
-        serviceProvider.setTemplateId("custom-application-oidc");
+        serviceProvider.setDescription("Agent application auto-created for agent using OAuth2 client credentials.");
+        serviceProvider.setTemplateId("agent-application");
+        serviceProvider.setAPIBasedAuthenticationEnabled(true);
         AssociatedRolesConfig associatedRolesConfig = new AssociatedRolesConfig();
         associatedRolesConfig.setAllowedAudience(OAuthConstants.UserType.APPLICATION);
         LocalAndOutboundAuthenticationConfig localAndOutboundAuthenticationConfig =
