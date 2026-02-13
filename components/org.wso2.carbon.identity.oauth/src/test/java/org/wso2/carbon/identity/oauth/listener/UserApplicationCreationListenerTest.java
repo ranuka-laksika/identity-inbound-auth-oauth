@@ -49,6 +49,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+/**
+ * Test class for UserApplicationCreationListener.
+ */
 public class UserApplicationCreationListenerTest extends IdentityBaseTest {
 
     private static final String AGENT_USERNAME = "agent123";
@@ -92,6 +95,7 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
         when(oAuthComponentServiceHolder.getApplicationManagementService())
                 .thenReturn(applicationManagementService);
 
+        // Create the listener AFTER setting up the static mocks and property
         listener = new UserApplicationCreationListener();
     }
 
@@ -192,14 +196,6 @@ public class UserApplicationCreationListenerTest extends IdentityBaseTest {
         // Verify that API-based authentication is enabled on the agent application
         assertTrue(capturedAppDTO.getServiceProvider().isAPIBasedAuthenticationEnabled(),
                 "API-based authentication should be enabled for agent applications");
-
-        // Verify that when createApplication is called, it returns the agent username as application ID
-        String returnedApplicationId =
-                applicationManagementService.createApplication(
-                        capturedAppDTO, TENANT_DOMAIN, AGENT_USERNAME);
-        assertEquals(returnedApplicationId, AGENT_USERNAME,
-                "The application ID returned by createApplication should equal the agent username");
-
     }
 
     private void setupCommonMocks() throws UserStoreException {

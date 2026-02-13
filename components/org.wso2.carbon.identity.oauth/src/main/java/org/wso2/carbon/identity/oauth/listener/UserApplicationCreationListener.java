@@ -98,47 +98,33 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
         }
 
         try {
-
-            log.info("Creating agent application for new agent: ");
-
-            String username = user.getUsername();
-            String userStoreDomain = user.getUserStoreDomain();
-            int tenantId = userStoreManager.getTenantId();
-            String tenantDomain = IdentityTenantUtil.getTenantDomain(tenantId);
-
-            // Get the agent identity userStore name from configuration.
-            String agentUserStoreName = IdentityUtil.getAgentIdentityUserstoreName();
-
-            // Check if the user being created is an agent.
-            // Agents have the AGENT userStore domain prefix.
-            if (StringUtils.isBlank(userStoreDomain) ||
-                    !agentUserStoreName.equalsIgnoreCase(userStoreDomain)) {
-                // This is a regular user, not an agent. Skip application creation.
-                if (log.isDebugEnabled()) {
-                    log.debug("This is not an agent");
-                }
-                return true;
-            }
-
-            // Get the "IsUserServingAgent" flag from ThreadLocal
             Boolean isUserServingAgent = IdentityUtil.getThreadLocalIsUserServingAgent();
             if (isUserServingAgent == null) {
-                isUserServingAgent = false; // Default to false if not set
+                isUserServingAgent = false;
             }
 
-            if (log.isDebugEnabled()) {
-                log.debug("IsUserServingAgent flag value:" + isUserServingAgent);
-            }
-
-            // Only create the OAuth2/OIDC application if this is a user-serving agent
             if (Boolean.TRUE.equals(isUserServingAgent)) {
+
+                String username = user.getUsername();
+                String userStoreDomain = user.getUserStoreDomain();
+                int tenantId = userStoreManager.getTenantId();
+                String tenantDomain = IdentityTenantUtil.getTenantDomain(tenantId);
+
+                // Get the agent identity userStore name from configuration.
+                String agentUserStoreName = IdentityUtil.getAgentIdentityUserstoreName();
+
+                // Check if the user being created is an agent.
+                if (StringUtils.isBlank(userStoreDomain) ||
+                        !agentUserStoreName.equalsIgnoreCase(userStoreDomain)) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("This is not an agent");
+                    }
+                    return true;
+                }
                 createAgentApplication(username, tenantDomain);
             } else {
-                if (log.isDebugEnabled()) {
-                    log.debug("Skipping application creation for non-user-serving agent");
-                }
+                return true;
             }
-
             return true;
 
         } catch (IdentityApplicationManagementException e) {
