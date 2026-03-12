@@ -123,7 +123,11 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
 
             // Only create the OAuth2/OIDC application if this is a user-serving agent
             if (isUserServingAgent) {
-                createAgentApplication(username, tenantDomain);
+                String agentType = (String) IdentityUtil.threadLocalProperties.get().get("agentType");
+                String callbackUrl = (String) IdentityUtil.threadLocalProperties.get().get("callbackUrl");
+                Long cibaAuthReqExpiryTime = (Long) IdentityUtil.threadLocalProperties.get().get("cibaAuthReqExpiryTime");
+                String notificationChannels = (String) IdentityUtil.threadLocalProperties.get().get("notificationChannels");
+                createAgentApplication(username, tenantDomain, agentType, callbackUrl, cibaAuthReqExpiryTime, notificationChannels);
             } else {
                 if (log.isDebugEnabled()) {
                     log.debug("Skipping application creation for non-user-serving agent");
@@ -205,14 +209,15 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
         return true;
     }
 
-    private void createAgentApplication(String username, String tenantDomain)
+    private void createAgentApplication(String username, String tenantDomain, String agentType,
+                                        String callbackUrl, Long cibaAuthReqExpiryTime, String notificationChannels)
             throws IdentityApplicationManagementException, NullPointerException {
 
         // Create a new ServiceProvider (Application).
         ServiceProvider serviceProvider = new ServiceProvider();
         serviceProvider.setApplicationName(OAuth2Constants.DEFAULT_AGENT_IDENTITY_USERSTORE_NAME
                 + "-" + username);
-        serviceProvider.setDescription("Agent application auto-created for agent using OAuth2 client credentials.");
+        serviceProvider.setDescription("Agent application auto-created for agent using OAuth2 authorization.");
         serviceProvider.setTemplateId("agent-application");
         serviceProvider.setAPIBasedAuthenticationEnabled(true);
         AssociatedRolesConfig associatedRolesConfig = new AssociatedRolesConfig();
@@ -244,9 +249,50 @@ public class UserApplicationCreationListener extends AbstractIdentityUserOperati
 
         OAuthConsumerAppDTO consumerAppDTO = new OAuthConsumerAppDTO();
         consumerAppDTO.setOAuthVersion(OAuthConstants.OAuthVersions.VERSION_2);
-        consumerAppDTO.setGrantTypes(OAuthConstants.GrantTypes.CLIENT_CREDENTIALS);
+        consumerAppDTO.setBypassClientCredentials(true);
+        consumerAppDTO.setPkceMandatory(true);
+        consumerAppDTO.setPkceSupportPlain(false);
         consumerAppDTO.setTokenType(OAuth2Util.JWT);
         consumerAppDTO.setTokenBindingType(OAuthConstants.OIDCConfigProperties.TOKEN_BINDING_TYPE_NONE);
+
+        // Configure grant types and callback URL based on agent type
+        boolean isAsynchronous = "ASYNCHRONOUS".equals(agentType);
+
+        if (isAsynchronous) {
+            // Asynchronous AI Agent: Enable CIBA grant type
+            consumerAppDTO.setGrantTypes(OAuthConstants.GrantTypes.AUTHORIZATION_CODE + " " +
+                    OAuthConstants.GrantTypes.REFRESH_TOKEN + " " +
+                    OAuthConstants.GrantTypes.CIBA);
+
+            // Configure CIBA-specific settings for backchannel authentication
+            // Set notification channels from frontend (default to email,sms if not provided)
+            if (StringUtils.isNotBlank(notificationChannels)) {
+                consumerAppDTO.setCibaNotificationChannels(notificationChannels);
+            } else {
+                consumerAppDTO.setCibaNotificationChannels("email,sms");
+            }
+
+            // Set CIBA authentication request expiry time from frontend (default to 300 seconds if not provided)
+            if (cibaAuthReqExpiryTime != null && cibaAuthReqExpiryTime > 0) {
+                consumerAppDTO.setCibaAuthReqExpiryTime(cibaAuthReqExpiryTime);
+            } else {
+                consumerAppDTO.setCibaAuthReqExpiryTime(300L);
+            }
+
+            log.info("Creating asynchronous agent application with CIBA grant type, notification channels: " +
+                    consumerAppDTO.getCibaNotificationChannels() + ", expiry time: " +
+                    consumerAppDTO.getCibaAuthReqExpiryTime() + " seconds");
+        } else {
+            // Synchronous AI Agent: Standard authorization code flow
+            consumerAppDTO.setGrantTypes(OAuthConstants.GrantTypes.AUTHORIZATION_CODE + " " +
+                    OAuthConstants.GrantTypes.REFRESH_TOKEN);
+
+            // Set callback URL for synchronous agents
+            if (StringUtils.isNotBlank(callbackUrl)) {
+                consumerAppDTO.setCallbackUrl(callbackUrl);
+                log.info("Creating synchronous agent application with callback URL: " + callbackUrl);
+            }
+        }
 
         InboundProtocolsDTO inboundProtocolsDTO = new InboundProtocolsDTO();
         inboundProtocolsDTO.addProtocolConfiguration(consumerAppDTO);
